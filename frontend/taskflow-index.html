@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>TaskFlow — Kanban Task Manager</title>
+<style>
+  :root{
+    --bg:#0E1318; --panel:#151C24; --panel-2:#1B232C; --line:#232D38;
+    --text:#E7EBEE; --muted:#8C9BA8;
+    --accent:#49C5B6; --accent-dim:#2E6F68;
+    --low:#5B8DEF; --medium:#E8A33D; --high:#E85D5D;
+    --danger:#E85D5D; --success:#49C5B6;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html{height:100%; overflow-x:hidden;}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:-apple-system,'Segoe UI',Roboto,sans-serif;
+    height:100vh; overflow-x:hidden; overflow-y:hidden;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  button{font-family:inherit;cursor:pointer;}
+  input, textarea, select{font-family:inherit;}
+  .hidden{display:none !important;}
+
+  /* ===== AUTH SCREEN ===== */
+  #authScreen{
+    height:100vh; display:flex; align-items:center; justify-content:center;
+    background:radial-gradient(circle at 20% 20%, rgba(73,197,182,.08), transparent 45%),
+               radial-gradient(circle at 80% 80%, rgba(232,163,61,.06), transparent 45%), var(--bg);
+  }
+  .auth-card{
+    width:100%; max-width:380px; background:var(--panel); border:1px solid var(--line);
+    border-radius:14px; padding:36px 32px;
+  }
+  .auth-logo{font-size:1.3rem; font-weight:700; margin-bottom:4px;}
+  .auth-logo span{color:var(--accent);}
+  .auth-sub{color:var(--muted); font-size:.88rem; margin-bottom:26px;}
+  .field{margin-bottom:16px;}
+  .field label{display:block; font-size:.8rem; color:var(--muted); margin-bottom:6px;}
+  .field input{
+    width:100%; padding:11px 13px; background:var(--panel-2); border:1px solid var(--line);
+    border-radius:7px; color:var(--text); font-size:.92rem; outline:none;
+    transition:border-color .15s;
+  }
+  .field input:focus{border-color:var(--accent);}
+  .btn{
+    padding:11px 18px; border-radius:7px; border:1px solid var(--line);
+    background:transparent; color:var(--text); font-size:.9rem; font-weight:500;
+    transition:all .15s;
+  }
+  .btn-primary{background:var(--accent); color:#08201D; border-color:var(--accent); width:100%;}
+  .btn-primary:hover{background:#5cd5c6;}
+  .btn-ghost:hover{border-color:var(--accent); color:var(--accent);}
+  .auth-switch{text-align:center; margin-top:18px; font-size:.85rem; color:var(--muted);}
+  .auth-switch a{color:var(--accent); cursor:pointer;}
+  .auth-error{
+    background:rgba(232,93,93,.12); border:1px solid rgba(232,93,93,.3); color:#f2a3a3;
+    padding:10px 12px; border-radius:7px; font-size:.83rem; margin-bottom:16px;
+  }
+  .password-checklist{margin-top:8px; display:flex; flex-direction:column; gap:4px;}
+  .pw-rule{font-size:.76rem; color:var(--muted); transition:color .15s;}
+  .pw-rule.valid{color:var(--accent);}
+  .pw-match-msg{font-size:.76rem; margin-top:6px; color:var(--danger);}
+  .pw-match-msg.valid{color:var(--accent);}
+  .field input.invalid{border-color:var(--danger);}
+  .field input.valid-input{border-color:var(--accent-dim);}
+
+  /* ===== APP SHELL ===== */
+  #appScreen{height:100vh; width:100%; max-width:100vw; display:flex; flex-direction:column; overflow-x:hidden;}
+
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 22px; border-bottom:1px solid var(--line); background:var(--panel);
+    flex-shrink:0; gap:12px;
+  }
+  .topbar-left{display:flex; align-items:center; gap:14px; min-width:0;}
+  .brand{font-weight:700; font-size:1.05rem; flex-shrink:0;}
+  .brand span{color:var(--accent);}
+  .board-select{
+    background:var(--panel-2); border:1px solid var(--line); color:var(--text);
+    padding:7px 10px; border-radius:6px; font-size:.85rem; max-width:160px;
+  }
+  .topbar-right{display:flex; align-items:center; gap:10px;}
+  .icon-btn{
+    width:34px; height:34px; border-radius:7px; border:1px solid var(--line);
+    background:var(--panel-2); color:var(--muted); display:flex; align-items:center; justify-content:center;
+    font-size:1rem; transition:all .15s;
+  }
+  .icon-btn:hover{color:var(--accent); border-color:var(--accent-dim);}
+  .avatar-chip{
+    width:34px; height:34px; border-radius:50%; background:var(--accent-dim);
+    color:var(--accent); display:flex; align-items:center; justify-content:center;
+    font-size:.8rem; font-weight:700; flex-shrink:0;
+  }
+  .menu-toggle{display:none;}
+
+  /* ===== STATS BAR ===== */
+  .stats-bar{
+    display:flex; gap:10px; padding:12px 22px; border-bottom:1px solid var(--line);
+    background:var(--bg); flex-shrink:0; overflow-x:auto;
+  }
+  .stat-chip{
+    background:var(--panel); border:1px solid var(--line); border-radius:8px;
+    padding:8px 14px; min-width:100px; flex-shrink:0;
+  }
+  .stat-chip .num{font-size:1.2rem; font-weight:700; font-variant-numeric:tabular-nums;}
+  .stat-chip .lbl{font-size:.72rem; color:var(--muted); margin-top:1px;}
+  .stat-chip.overdue .num{color:var(--danger);}
+  .stat-chip.done .num{color:var(--accent);}
+
+  /* ===== FILTER BAR ===== */
+  .filter-bar{
+    display:flex; gap:10px; padding:12px 22px; border-bottom:1px solid var(--line);
+    flex-shrink:0; flex-wrap:wrap; align-items:center;
+  }
+  .filter-bar input[type=text]{
+    flex:1; min-width:140px; background:var(--panel-2); border:1px solid var(--line);
+    color:var(--text); padding:8px 12px; border-radius:7px; font-size:.85rem; outline:none;
+  }
+  .filter-bar select{
+    background:var(--panel-2); border:1px solid var(--line); color:var(--text);
+    padding:8px 10px; border-radius:7px; font-size:.83rem; outline:none;
+  }
+
+  /* ===== BOARD / COLUMNS ===== */
+  .board-wrap{flex:1; overflow-x:auto; overflow-y:hidden; padding:18px 22px;}
+  .board-columns{display:flex; gap:16px; height:100%; min-width:min-content;}
+  .column{
+    width:280px; flex-shrink:0; display:flex; flex-direction:column;
+    background:var(--panel); border:1px solid var(--line); border-radius:12px; max-height:100%;
+  }
+  .column-head{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 14px 10px; flex-shrink:0;
+  }
+  .column-head h3{font-size:.92rem; font-weight:600;}
+  .column-count{
+    background:var(--panel-2); color:var(--muted); font-size:.72rem; padding:2px 8px; border-radius:10px;
+  }
+  .column-body{flex:1; overflow-y:auto; padding:0 10px 10px; display:flex; flex-direction:column; gap:8px; min-height:60px;}
+  .column-body.drag-over{background:rgba(73,197,182,.06); border-radius:8px;}
+  .column-empty{color:var(--muted); font-size:.78rem; text-align:center; padding:24px 8px; opacity:.6;}
+  .add-task-btn{
+    margin:0 10px 12px; padding:9px; border-radius:8px; border:1px dashed var(--line);
+    background:transparent; color:var(--muted); font-size:.83rem; text-align:left; padding-left:12px;
+    transition:all .15s;
+  }
+  .add-task-btn:hover{border-color:var(--accent); color:var(--accent);}
+
+  /* ===== TASK CARD ===== */
+  .task-card{
+    background:var(--panel-2); border:1px solid var(--line); border-radius:9px;
+    padding:12px 13px; cursor:grab; transition:border-color .15s, transform .15s, box-shadow .15s;
+    touch-action:none;
+  }
+  .task-card:hover{border-color:var(--accent-dim); box-shadow:0 6px 16px -10px rgba(73,197,182,.4);}
+  .task-card.dragging{opacity:.4;}
+  .task-card.overdue{border-left:3px solid var(--danger);}
+  .task-card-top{display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:6px;}
+  .task-title{font-size:.88rem; font-weight:500; line-height:1.35;}
+  .priority-dot{width:8px; height:8px; border-radius:50%; flex-shrink:0; margin-top:5px;}
+  .priority-dot.LOW{background:var(--low);}
+  .priority-dot.MEDIUM{background:var(--medium);}
+  .priority-dot.HIGH{background:var(--high);}
+  .task-tags{display:flex; flex-wrap:wrap; gap:5px; margin:6px 0;}
+  .task-tag{font-size:.68rem; padding:2px 7px; border-radius:10px; background:rgba(73,197,182,.12); color:var(--accent);}
+  .task-meta{display:flex; align-items:center; justify-content:space-between; margin-top:8px; font-size:.72rem; color:var(--muted);}
+  .task-due{display:flex; align-items:center; gap:4px;}
+  .task-due.overdue-text{color:var(--danger); font-weight:600;}
+  .subtask-progress{font-size:.72rem; color:var(--muted);}
+
+  /* ===== MODAL ===== */
+  .modal-backdrop{
+    position:fixed; inset:0; background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center;
+    z-index:100; padding:20px;
+  }
+  .modal{
+    background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    width:100%; max-width:480px; max-height:88vh; overflow-y:auto; padding:26px;
+  }
+  .modal-title{font-size:1.05rem; font-weight:700; margin-bottom:18px; display:flex; justify-content:space-between; align-items:center;}
+  .modal-close{background:none; border:0; color:var(--muted); font-size:1.3rem; line-height:1;}
+  .modal .field textarea{
+    width:100%; padding:10px 12px; background:var(--panel-2); border:1px solid var(--line);
+    border-radius:7px; color:var(--text); font-size:.88rem; resize:vertical; min-height:70px; outline:none;
+  }
+  .modal .field select{
+    width:100%; padding:10px 12px; background:var(--panel-2); border:1px solid var(--line);
+    border-radius:7px; color:var(--text); font-size:.88rem; outline:none;
+  }
+  .field-row{display:flex; gap:12px;}
+  .field-row .field{flex:1;}
+  .subtask-list{display:flex; flex-direction:column; gap:6px; margin-top:8px;}
+  .subtask-row{display:flex; align-items:center; gap:8px; font-size:.86rem;}
+  .subtask-row input[type=checkbox]{accent-color:var(--accent); width:16px; height:16px;}
+  .subtask-row span.done{text-decoration:line-through; color:var(--muted);}
+  .subtask-row button{background:none; border:0; color:var(--muted); font-size:.9rem; margin-left:auto;}
+  .subtask-add{display:flex; gap:8px; margin-top:8px;}
+  .subtask-add input{flex:1; padding:8px 10px; background:var(--panel-2); border:1px solid var(--line); border-radius:6px; color:var(--text); font-size:.83rem; outline:none;}
+  .modal-actions{display:flex; gap:10px; margin-top:22px;}
+  .modal-actions .btn{flex:1;}
+  .btn-danger{color:var(--danger); border-color:rgba(232,93,93,.3);}
+  .btn-danger:hover{background:rgba(232,93,93,.1);}
+
+  /* ===== TOASTS ===== */
+  #toastContainer{position:fixed; bottom:20px; right:20px; z-index:200; display:flex; flex-direction:column; gap:8px;}
+  .toast{
+    background:var(--panel); border:1px solid var(--accent-dim); color:var(--text);
+    padding:11px 16px; border-radius:8px; font-size:.85rem; box-shadow:0 10px 24px -12px rgba(0,0,0,.5);
+    animation:slideIn .25s ease;
+  }
+  .toast.error{border-color:rgba(232,93,93,.4);}
+  @keyframes slideIn{from{opacity:0; transform:translateX(20px);} to{opacity:1; transform:translateX(0);}}
+
+  /* ===== EMPTY STATE ===== */
+  .empty-state{
+    flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    color:var(--muted); text-align:center; padding:40px;
+  }
+  .empty-state h3{color:var(--text); margin-bottom:8px; font-size:1.1rem;}
+  .empty-state p{font-size:.88rem; max-width:320px; margin-bottom:18px;}
+
+  /* ===== RESPONSIVE ===== */
+  @media (max-width: 760px){
+    .board-select{display:none;}
+    .stat-chip{min-width:84px; padding:7px 10px;}
+    .stat-chip .num{font-size:1.05rem;}
+    .board-columns{padding-bottom:8px;}
+    .column{width:260px;}
+    .topbar{padding:12px 14px;}
+    .stats-bar, .filter-bar, .board-wrap{padding-left:14px; padding-right:14px;}
+  }
+
+  ::-webkit-scrollbar{height:8px; width:8px;}
+  ::-webkit-scrollbar-thumb{background:var(--line); border-radius:4px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+</style>
+</head>
+<body>
+
+<!-- AUTH SCREEN -->
+<div id="authScreen">
+  <div class="auth-card">
+    <div class="auth-logo">Task<span>Flow</span></div>
+    <div class="auth-sub" id="authSub">Sign in to manage your boards</div>
+    <div id="authError" class="auth-error hidden"></div>
+
+    <form id="loginForm">
+      <div class="field">
+        <label>Email</label>
+        <input type="email" id="loginEmail" required placeholder="you@example.com">
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="loginPassword" required placeholder="••••••••">
+      </div>
+      <button type="submit" class="btn btn-primary">Sign in</button>
+    </form>
+
+    <form id="registerForm" class="hidden">
+      <div class="field">
+        <label>Full name</label>
+        <input type="text" id="regName" required placeholder="Muhammad Faiz Alam" minlength="2" maxlength="60">
+      </div>
+      <div class="field">
+        <label>Email</label>
+        <input type="email" id="regEmail" required placeholder="you@example.com">
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="regPassword" required placeholder="At least 8 characters">
+        <div id="passwordChecklist" class="password-checklist">
+          <div class="pw-rule" data-rule="length">✕ At least 8 characters</div>
+          <div class="pw-rule" data-rule="upper">✕ One uppercase letter</div>
+          <div class="pw-rule" data-rule="lower">✕ One lowercase letter</div>
+          <div class="pw-rule" data-rule="number">✕ One number</div>
+        </div>
+      </div>
+      <div class="field">
+        <label>Confirm password</label>
+        <input type="password" id="regPasswordConfirm" required placeholder="Re-enter your password">
+        <div id="passwordMatchMsg" class="pw-match-msg hidden"></div>
+      </div>
+      <button type="submit" class="btn btn-primary" id="registerSubmitBtn" disabled>Create account</button>
+    </form>
+
+    <div class="auth-switch" id="authSwitch">
+      Don't have an account? <a id="toRegister">Sign up</a>
+    </div>
+  </div>
+</div>
+
+<!-- APP SCREEN -->
+<div id="appScreen" class="hidden">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="brand">Task<span>Flow</span></div>
+      <select id="boardSelect" class="board-select"></select>
+      <button class="icon-btn" id="newBoardBtn" title="New board">+</button>
+    </div>
+    <div class="topbar-right">
+      <button class="icon-btn" id="renameBoardBtn" title="Rename board">✎</button>
+      <button class="icon-btn" id="deleteBoardBtn" title="Delete board">🗑</button>
+      <div class="avatar-chip" id="userAvatar">F</div>
+      <button class="icon-btn" id="logoutBtn" title="Log out">⏻</button>
+    </div>
+  </div>
+
+  <div class="stats-bar">
+    <div class="stat-chip"><div class="num" id="statTotal">0</div><div class="lbl">Total tasks</div></div>
+    <div class="stat-chip done"><div class="num" id="statCompleted">0</div><div class="lbl">Completed</div></div>
+    <div class="stat-chip overdue"><div class="num" id="statOverdue">0</div><div class="lbl">Overdue</div></div>
+    <div class="stat-chip"><div class="num" id="statWeek">0</div><div class="lbl">Added this week</div></div>
+    <div class="stat-chip"><div class="num" id="statPct">0%</div><div class="lbl">Completion</div></div>
+  </div>
+
+  <div class="filter-bar">
+    <input type="text" id="searchInput" placeholder="Search tasks...">
+    <select id="priorityFilter">
+      <option value="">All priorities</option>
+      <option value="LOW">Low</option>
+      <option value="MEDIUM">Medium</option>
+      <option value="HIGH">High</option>
+    </select>
+    <select id="tagFilter"><option value="">All tags</option></select>
+  </div>
+
+  <div class="board-wrap">
+    <div class="board-columns" id="boardColumns"></div>
+  </div>
+</div>
+
+<div id="toastContainer"></div>
+
+<!-- TASK MODAL -->
+<div id="taskModalBackdrop" class="modal-backdrop hidden">
+  <div class="modal">
+    <div class="modal-title">
+      <span id="modalHeading">New Task</span>
+      <button class="modal-close" id="closeModalBtn">×</button>
+    </div>
+
+    <div class="field">
+      <label>Title</label>
+      <input type="text" id="taskTitle" placeholder="e.g. Design the login page" maxlength="150">
+    </div>
+
+    <div class="field">
+      <label>Description</label>
+      <textarea id="taskDescription" placeholder="Optional details..." maxlength="2000"></textarea>
+    </div>
+
+    <div class="field-row">
+      <div class="field">
+        <label>Priority</label>
+        <select id="taskPriority">
+          <option value="LOW">Low</option>
+          <option value="MEDIUM" selected>Medium</option>
+          <option value="HIGH">High</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Due date</label>
+        <input type="date" id="taskDueDate">
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Tags (comma separated)</label>
+      <input type="text" id="taskTags" placeholder="e.g. frontend, urgent">
+    </div>
+
+    <div class="field" id="subtaskSection">
+      <label>Subtasks</label>
+      <div class="subtask-list" id="subtaskList"></div>
+      <div class="subtask-add">
+        <input type="text" id="newSubtaskInput" placeholder="Add a subtask..." maxlength="150">
+        <button class="btn btn-ghost" id="addSubtaskBtn">Add</button>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-danger hidden" id="deleteTaskBtn">Delete</button>
+      <button class="btn btn-primary" id="saveTaskBtn">Save Task</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_BASE = 'http://localhost:8080/api';
+
+let state = {
+  token: localStorage.getItem('taskflow_token') || null,
+  user: JSON.parse(localStorage.getItem('taskflow_user') || 'null'),
+  boards: [],
+  currentBoard: null,
+  columns: [],
+  editingTaskId: null,
+  editingColumnId: null,
+  allTags: new Set(),
+};
+
+// ---------- API helper ----------
+async function api(path, options = {}) {
+  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+  if (state.token) headers['Authorization'] = 'Bearer ' + state.token;
+  const res = await fetch(API_BASE + path, { ...options, headers });
+  if (!res.ok) {
+    let msg = 'Something went wrong';
+    try { const body = await res.json(); msg = body.error || Object.values(body)[0] || msg; } catch(e) {}
+    throw new Error(msg);
+  }
+  if (res.status === 204) return null;
+  return res.json();
+}
+
+// ---------- Toasts ----------
+function toast(message, isError = false) {
+  const container = document.getElementById('toastContainer');
+  const el = document.createElement('div');
+  el.className = 'toast' + (isError ? ' error' : '');
+  el.textContent = message;
+  container.appendChild(el);
+  setTimeout(() => el.remove(), 3200);
+}
+
+// ---------- Auth ----------
+const authScreen = document.getElementById('authScreen');
+const appScreen = document.getElementById('appScreen');
+const loginForm = document.getElementById('loginForm');
+const registerForm = document.getElementById('registerForm');
+const authSwitch = document.getElementById('authSwitch');
+const authSub = document.getElementById('authSub');
+const authError = document.getElementById('authError');
+let showingLogin = true;
+
+document.getElementById('toRegister').addEventListener('click', () => toggleAuthMode());
+function toggleAuthMode() {
+  showingLogin = !showingLogin;
+  loginForm.classList.toggle('hidden', !showingLogin);
+  registerForm.classList.toggle('hidden', showingLogin);
+  authSub.textContent = showingLogin ? 'Sign in to manage your boards' : 'Create an account to get started';
+  authSwitch.innerHTML = showingLogin
+    ? `Don't have an account? <a id="toRegister">Sign up</a>`
+    : `Already have an account? <a id="toRegister">Sign in</a>`;
+  document.getElementById('toRegister').addEventListener('click', () => toggleAuthMode());
+  authError.classList.add('hidden');
+}
+
+loginForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  authError.classList.add('hidden');
+  try {
+    const data = await api('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({
+        email: document.getElementById('loginEmail').value,
+        password: document.getElementById('loginPassword').value,
+      }),
+    });
+    handleAuthSuccess(data);
+  } catch (err) {
+    authError.textContent = err.message;
+    authError.classList.remove('hidden');
+  }
+});
+
+registerForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  authError.classList.add('hidden');
+  try {
+    const data = await api('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: document.getElementById('regName').value,
+        email: document.getElementById('regEmail').value,
+        password: document.getElementById('regPassword').value,
+      }),
+    });
+    handleAuthSuccess(data);
+  } catch (err) {
+    authError.textContent = err.message;
+    authError.classList.remove('hidden');
+  }
+});
+
+// ---------- Live registration validation ----------
+const regPassword = document.getElementById('regPassword');
+const regPasswordConfirm = document.getElementById('regPasswordConfirm');
+const regEmail = document.getElementById('regEmail');
+const regName = document.getElementById('regName');
+const registerSubmitBtn = document.getElementById('registerSubmitBtn');
+const passwordMatchMsg = document.getElementById('passwordMatchMsg');
+
+function checkPasswordRules(pw) {
+  const rules = {
+    length: pw.length >= 8,
+    upper: /[A-Z]/.test(pw),
+    lower: /[a-z]/.test(pw),
+    number: /[0-9]/.test(pw),
+  };
+  document.querySelectorAll('.pw-rule').forEach(el => {
+    const ok = rules[el.dataset.rule];
+    el.classList.toggle('valid', ok);
+    el.textContent = (ok ? '✓ ' : '✕ ') + el.textContent.slice(2);
+  });
+  return Object.values(rules).every(Boolean);
+}
+
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function updateRegisterValidity() {
+  const pwValid = checkPasswordRules(regPassword.value);
+  const emailValid = isValidEmail(regEmail.value);
+  const nameValid = regName.value.trim().length >= 2;
+  const match = regPassword.value.length > 0 && regPassword.value === regPasswordConfirm.value;
+
+  regEmail.classList.toggle('invalid', regEmail.value.length > 0 && !emailValid);
+  regEmail.classList.toggle('valid-input', emailValid);
+
+  if (regPasswordConfirm.value.length > 0) {
+    passwordMatchMsg.classList.remove('hidden');
+    passwordMatchMsg.textContent = match ? '✓ Passwords match' : '✕ Passwords do not match';
+    passwordMatchMsg.classList.toggle('valid', match);
+    regPasswordConfirm.classList.toggle('invalid', !match);
+    regPasswordConfirm.classList.toggle('valid-input', match);
+  } else {
+    passwordMatchMsg.classList.add('hidden');
+  }
+
+  registerSubmitBtn.disabled = !(pwValid && emailValid && nameValid && match);
+}
+
+[regPassword, regPasswordConfirm, regEmail, regName].forEach(el => {
+  el.addEventListener('input', updateRegisterValidity);
+});
+
+function handleAuthSuccess(data) {
+  state.token = data.token;
+  state.user = { id: data.userId, name: data.name, email: data.email, role: data.role };
+  localStorage.setItem('taskflow_token', state.token);
+  localStorage.setItem('taskflow_user', JSON.stringify(state.user));
+  enterApp();
+}
+
+document.getElementById('logoutBtn').addEventListener('click', () => {
+  localStorage.removeItem('taskflow_token');
+  localStorage.removeItem('taskflow_user');
+  state.token = null; state.user = null;
+  appScreen.classList.add('hidden');
+  authScreen.classList.remove('hidden');
+});
+
+// ---------- App bootstrap ----------
+async function enterApp() {
+  authScreen.classList.add('hidden');
+  appScreen.classList.remove('hidden');
+  document.getElementById('userAvatar').textContent = (state.user.name || '?').charAt(0).toUpperCase();
+  await loadBoards();
+}
+
+async function loadBoards() {
+  try {
+    state.boards = await api('/boards');
+    if (state.boards.length === 0) {
+      const board = await api('/boards', { method: 'POST', body: JSON.stringify({ name: 'My First Board' }) });
+      state.boards = [board];
+    }
+    renderBoardSelect();
+    await selectBoard(state.boards[0].id);
+  } catch (err) {
+    toast(err.message, true);
+  }
+}
+
+function renderBoardSelect() {
+  const select = document.getElementById('boardSelect');
+  select.innerHTML = state.boards.map(b => `<option value="${b.id}">${escapeHtml(b.name)}</option>`).join('');
+  select.value = state.currentBoard ? state.currentBoard.id : state.boards[0].id;
+}
+
+document.getElementById('boardSelect').addEventListener('change', (e) => selectBoard(Number(e.target.value)));
+
+document.getElementById('newBoardBtn').addEventListener('click', async () => {
+  const name = prompt('New board name:');
+  if (!name) return;
+  try {
+    const board = await api('/boards', { method: 'POST', body: JSON.stringify({ name }) });
+    state.boards.push(board);
+    renderBoardSelect();
+    await selectBoard(board.id);
+    toast('Board created ✓');
+  } catch (err) { toast(err.message, true); }
+});
+
+document.getElementById('renameBoardBtn').addEventListener('click', async () => {
+  if (!state.currentBoard) return;
+  const name = prompt('Rename board:', state.currentBoard.name);
+  if (!name) return;
+  try {
+    const updated = await api('/boards/' + state.currentBoard.id, { method: 'PUT', body: JSON.stringify({ name }) });
+    state.currentBoard.name = updated.name;
+    const idx = state.boards.findIndex(b => b.id === updated.id);
+    if (idx > -1) state.boards[idx].name = updated.name;
+    renderBoardSelect();
+    toast('Board renamed ✓');
+  } catch (err) { toast(err.message, true); }
+});
+
+document.getElementById('deleteBoardBtn').addEventListener('click', async () => {
+  if (!state.currentBoard) return;
+  if (!confirm(`Delete board "${state.currentBoard.name}"? This cannot be undone.`)) return;
+  try {
+    await api('/boards/' + state.currentBoard.id, { method: 'DELETE' });
+    state.boards = state.boards.filter(b => b.id !== state.currentBoard.id);
+    if (state.boards.length === 0) {
+      await loadBoards();
+    } else {
+      renderBoardSelect();
+      await selectBoard(state.boards[0].id);
+    }
+    toast('Board deleted');
+  } catch (err) { toast(err.message, true); }
+});
+
+async function selectBoard(boardId) {
+  try {
+    state.currentBoard = await api('/boards/' + boardId);
+    state.columns = state.currentBoard.columns || [];
+    for (const col of state.columns) {
+      col.tasks = await api('/columns/' + col.id + '/tasks');
+    }
+    collectTags();
+    renderBoard();
+    await refreshStats();
+  } catch (err) { toast(err.message, true); }
+}
+
+function collectTags() {
+  state.allTags = new Set();
+  state.columns.forEach(col => col.tasks.forEach(t => (t.tags || []).forEach(tag => state.allTags.add(tag.name))));
+  const tagFilter = document.getElementById('tagFilter');
+  const current = tagFilter.value;
+  tagFilter.innerHTML = '<option value="">All tags</option>' +
+    [...state.allTags].map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
+  tagFilter.value = current;
+}
+
+async function refreshStats() {
+  try {
+    const stats = await api('/dashboard/stats');
+    document.getElementById('statTotal').textContent = stats.totalTasks;
+    document.getElementById('statCompleted').textContent = stats.completedTasks;
+    document.getElementById('statOverdue').textContent = stats.overdueTasks;
+    document.getElementById('statWeek').textContent = stats.tasksThisWeek;
+    document.getElementById('statPct').textContent = stats.completionPercentage + '%';
+  } catch (err) { /* silent */ }
+}
+
+// ---------- Rendering board ----------
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str || '';
+  return div.innerHTML;
+}
+
+function isOverdue(task) {
+  if (!task.dueDate) return false;
+  return new Date(task.dueDate) < new Date(new Date().toDateString());
+}
+
+function matchesFilters(task) {
+  const search = document.getElementById('searchInput').value.trim().toLowerCase();
+  const priority = document.getElementById('priorityFilter').value;
+  const tag = document.getElementById('tagFilter').value;
+  if (search && !task.title.toLowerCase().includes(search)) return false;
+  if (priority && task.priority !== priority) return false;
+  if (tag && !(task.tags || []).some(t => t.name === tag)) return false;
+  return true;
+}
+
+function renderBoard() {
+  const container = document.getElementById('boardColumns');
+  container.innerHTML = '';
+
+  state.columns.forEach(col => {
+    const colEl = document.createElement('div');
+    colEl.className = 'column';
+    colEl.dataset.columnId = col.id;
+
+    const visibleTasks = col.tasks.filter(matchesFilters);
+
+    colEl.innerHTML = `
+      <div class="column-head">
+        <h3>${escapeHtml(col.name)}</h3>
+        <span class="column-count">${visibleTasks.length}</span>
+      </div>
+      <div class="column-body" data-column-id="${col.id}">
+        ${visibleTasks.length === 0 ? '<div class="column-empty">No tasks here</div>' : ''}
+      </div>
+      <button class="add-task-btn" data-column-id="${col.id}">+ Add a task</button>
+    `;
+    container.appendChild(colEl);
+
+    const body = colEl.querySelector('.column-body');
+    visibleTasks.forEach(task => body.appendChild(renderTaskCard(task)));
+  });
+
+  container.querySelectorAll('.add-task-btn').forEach(btn => {
+    btn.addEventListener('click', () => openTaskModal(Number(btn.dataset.columnId)));
+  });
+
+  setupDragAndDrop();
+}
+
+function renderTaskCard(task) {
+  const card = document.createElement('div');
+  card.className = 'task-card' + (isOverdue(task) ? ' overdue' : '');
+  card.dataset.taskId = task.id;
+  card.draggable = true;
+
+  const doneSubtasks = (task.subtasks || []).filter(s => s.done).length;
+  const totalSubtasks = (task.subtasks || []).length;
+
+  card.innerHTML = `
+    <div class="task-card-top">
+      <div class="task-title">${escapeHtml(task.title)}</div>
+      <div class="priority-dot ${task.priority}"></div>
+    </div>
+    ${(task.tags && task.tags.length) ? `<div class="task-tags">${task.tags.map(t => `<span class="task-tag">${escapeHtml(t.name)}</span>`).join('')}</div>` : ''}
+    <div class="task-meta">
+      <span class="task-due ${isOverdue(task) ? 'overdue-text' : ''}">${task.dueDate ? '📅 ' + task.dueDate : ''}</span>
+      ${totalSubtasks ? `<span class="subtask-progress">☑ ${doneSubtasks}/${totalSubtasks}</span>` : ''}
+    </div>
+  `;
+
+  card.addEventListener('click', () => openTaskModal(task.column ? task.column.id : null, task));
+  return card;
+}
+
+['searchInput', 'priorityFilter', 'tagFilter'].forEach(id => {
+  document.getElementById(id).addEventListener('input', renderBoard);
+  document.getElementById(id).addEventListener('change', renderBoard);
+});
+
+// ---------- Drag and drop (native HTML5 DnD, works with mouse; touch falls back via dragstart polyfill in modern mobile browsers) ----------
+function setupDragAndDrop() {
+  document.querySelectorAll('.task-card').forEach(card => {
+    card.addEventListener('dragstart', (e) => {
+      card.classList.add('dragging');
+      e.dataTransfer.setData('text/plain', card.dataset.taskId);
+    });
+    card.addEventListener('dragend', () => card.classList.remove('dragging'));
+  });
+
+  document.querySelectorAll('.column-body').forEach(body => {
+    body.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      body.classList.add('drag-over');
+    });
+    body.addEventListener('dragleave', () => body.classList.remove('drag-over'));
+    body.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      body.classList.remove('drag-over');
+      const taskId = Number(e.dataTransfer.getData('text/plain'));
+      const targetColumnId = Number(body.dataset.columnId);
+      await moveTaskTo(taskId, targetColumnId);
+    });
+  });
+}
+
+async function moveTaskTo(taskId, targetColumnId) {
+  try {
+    const targetCol = state.columns.find(c => c.id === targetColumnId);
+    const newPosition = targetCol ? targetCol.tasks.length : 0;
+    await api(`/tasks/${taskId}/move`, {
+      method: 'PATCH',
+      body: JSON.stringify({ targetColumnId, newPosition }),
+    });
+    await selectBoard(state.currentBoard.id);
+    toast('Task moved ✓');
+  } catch (err) { toast(err.message, true); }
+}
+
+// ---------- Task modal ----------
+const taskModalBackdrop = document.getElementById('taskModalBackdrop');
+
+function openTaskModal(columnId, task = null) {
+  state.editingColumnId = columnId;
+  state.editingTaskId = task ? task.id : null;
+
+  document.getElementById('modalHeading').textContent = task ? 'Edit Task' : 'New Task';
+  document.getElementById('taskTitle').value = task ? task.title : '';
+  document.getElementById('taskDescription').value = task ? (task.description || '') : '';
+  document.getElementById('taskPriority').value = task ? task.priority : 'MEDIUM';
+  document.getElementById('taskDueDate').value = task && task.dueDate ? task.dueDate : '';
+  document.getElementById('taskTags').value = task && task.tags ? task.tags.map(t => t.name).join(', ') : '';
+  document.getElementById('deleteTaskBtn').classList.toggle('hidden', !task);
+
+  const subtaskSection = document.getElementById('subtaskSection');
+  subtaskSection.classList.toggle('hidden', !task);
+  if (task) renderSubtasks(task.subtasks || []);
+
+  taskModalBackdrop.classList.remove('hidden');
+}
+
+function renderSubtasks(subtasks) {
+  const list = document.getElementById('subtaskList');
+  list.innerHTML = subtasks.map(s => `
+    <div class="subtask-row" data-subtask-id="${s.id}">
+      <input type="checkbox" ${s.done ? 'checked' : ''} data-subtask-id="${s.id}">
+      <span class="${s.done ? 'done' : ''}">${escapeHtml(s.title)}</span>
+      <button data-delete-subtask="${s.id}">✕</button>
+    </div>
+  `).join('');
+
+  list.querySelectorAll('input[type=checkbox]').forEach(cb => {
+    cb.addEventListener('change', async () => {
+      try {
+        await api(`/subtasks/${cb.dataset.subtaskId}/toggle`, { method: 'PATCH' });
+        await refreshCurrentTaskInModal();
+      } catch (err) { toast(err.message, true); }
+    });
+  });
+  list.querySelectorAll('[data-delete-subtask]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      try {
+        await api(`/subtasks/${btn.dataset.deleteSubtask}`, { method: 'DELETE' });
+        await refreshCurrentTaskInModal();
+      } catch (err) { toast(err.message, true); }
+    });
+  });
+}
+
+document.getElementById('addSubtaskBtn').addEventListener('click', async () => {
+  const input = document.getElementById('newSubtaskInput');
+  const title = input.value.trim();
+  if (!title || !state.editingTaskId) return;
+  try {
+    await api(`/tasks/${state.editingTaskId}/subtasks`, { method: 'POST', body: JSON.stringify({ title }) });
+    input.value = '';
+    await refreshCurrentTaskInModal();
+  } catch (err) { toast(err.message, true); }
+});
+
+async function refreshCurrentTaskInModal() {
+  await selectBoard(state.currentBoard.id);
+  const col = state.columns.find(c => c.tasks.some(t => t.id === state.editingTaskId));
+  const task = col ? col.tasks.find(t => t.id === state.editingTaskId) : null;
+  if (task) renderSubtasks(task.subtasks || []);
+}
+
+document.getElementById('closeModalBtn').addEventListener('click', () => taskModalBackdrop.classList.add('hidden'));
+taskModalBackdrop.addEventListener('click', (e) => { if (e.target === taskModalBackdrop) taskModalBackdrop.classList.add('hidden'); });
+
+document.getElementById('saveTaskBtn').addEventListener('click', async () => {
+  const title = document.getElementById('taskTitle').value.trim();
+  if (!title) { toast('Task title is required', true); return; }
+
+  const payload = {
+    title,
+    description: document.getElementById('taskDescription').value.trim(),
+    priority: document.getElementById('taskPriority').value,
+    dueDate: document.getElementById('taskDueDate').value || null,
+    tags: document.getElementById('taskTags').value.split(',').map(t => t.trim()).filter(Boolean),
+  };
+
+  try {
+    if (state.editingTaskId) {
+      await api(`/tasks/${state.editingTaskId}`, { method: 'PUT', body: JSON.stringify(payload) });
+      toast('Task updated ✓');
+    } else {
+      await api(`/columns/${state.editingColumnId}/tasks`, { method: 'POST', body: JSON.stringify(payload) });
+      toast('Task created ✓');
+    }
+    taskModalBackdrop.classList.add('hidden');
+    await selectBoard(state.currentBoard.id);
+  } catch (err) { toast(err.message, true); }
+});
+
+document.getElementById('deleteTaskBtn').addEventListener('click', async () => {
+  if (!state.editingTaskId) return;
+  if (!confirm('Delete this task?')) return;
+  try {
+    await api(`/tasks/${state.editingTaskId}`, { method: 'DELETE' });
+    taskModalBackdrop.classList.add('hidden');
+    toast('Task deleted');
+    await selectBoard(state.currentBoard.id);
+  } catch (err) { toast(err.message, true); }
+});
+
+// ---------- Init ----------
+if (state.token && state.user) {
+  enterApp();
+}
+</script>
+</body>
+</html>
