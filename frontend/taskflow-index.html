@@ -154,10 +154,15 @@
   .task-card{
     background:var(--panel-2); border:1px solid var(--line); border-radius:9px;
     padding:12px 13px; cursor:grab; transition:border-color .15s, transform .15s, box-shadow .15s;
-    touch-action:none;
+    touch-action:pan-y;
   }
   .task-card:hover{border-color:var(--accent-dim); box-shadow:0 6px 16px -10px rgba(73,197,182,.4);}
   .task-card.dragging{opacity:.4;}
+  .drag-ghost{
+    position:fixed; z-index:300; pointer-events:none;
+    box-shadow:0 20px 40px -14px rgba(0,0,0,.6);
+    transform:rotate(-2deg); opacity:.95;
+  }
   .task-card.overdue{border-left:3px solid var(--danger);}
   .task-card-top{display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:6px;}
   .task-title{font-size:.88rem; font-weight:500; line-height:1.35;}
@@ -722,7 +727,6 @@ function renderTaskCard(task) {
   const card = document.createElement('div');
   card.className = 'task-card' + (isOverdue(task) ? ' overdue' : '');
   card.dataset.taskId = task.id;
-  card.draggable = true;
 
   const doneSubtasks = (task.subtasks || []).filter(s => s.done).length;
   const totalSubtasks = (task.subtasks || []).length;
@@ -739,7 +743,10 @@ function renderTaskCard(task) {
     </div>
   `;
 
-  card.addEventListener('click', () => openTaskModal(task.column ? task.column.id : null, task));
+  card.addEventListener('click', () => {
+    if (card.dataset.dragMoved === 'true') { card.dataset.dragMoved = 'false'; return; }
+    openTaskModal(task.column ? task.column.id : null, task);
+  });
   return card;
 }
 
@@ -748,28 +755,96 @@ function renderTaskCard(task) {
   document.getElementById(id).addEventListener('change', renderBoard);
 });
 
-// ---------- Drag and drop (native HTML5 DnD, works with mouse; touch falls back via dragstart polyfill in modern mobile browsers) ----------
+// ---------- Drag and drop (Pointer Events — works uniformly for mouse AND touch) ----------
+// A short hold (150ms) starts the drag so a quick tap still opens the task,
+// and a normal vertical scroll on mobile isn't hijacked.
 function setupDragAndDrop() {
   document.querySelectorAll('.task-card').forEach(card => {
-    card.addEventListener('dragstart', (e) => {
-      card.classList.add('dragging');
-      e.dataTransfer.setData('text/plain', card.dataset.taskId);
-    });
-    card.addEventListener('dragend', () => card.classList.remove('dragging'));
-  });
+    let pressTimer = null;
+    let dragging = false;
+    let ghost = null;
+    let startX = 0, startY = 0, offsetX = 0, offsetY = 0;
+    let moved = false;
 
-  document.querySelectorAll('.column-body').forEach(body => {
-    body.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      body.classList.add('drag-over');
+    const clearHighlights = () => {
+      document.querySelectorAll('.column-body.drag-over').forEach(b => b.classList.remove('drag-over'));
+    };
+
+    const startDrag = (clientX, clientY) => {
+      dragging = true;
+      moved = true;
+      card.classList.add('dragging');
+      const rect = card.getBoundingClientRect();
+      offsetX = clientX - rect.left;
+      offsetY = clientY - rect.top;
+
+      ghost = card.cloneNode(true);
+      ghost.classList.add('drag-ghost');
+      ghost.style.width = rect.width + 'px';
+      ghost.style.left = (clientX - offsetX) + 'px';
+      ghost.style.top = (clientY - offsetY) + 'px';
+      document.body.appendChild(ghost);
+    };
+
+    const moveDrag = (clientX, clientY) => {
+      if (!ghost) return;
+      ghost.style.left = (clientX - offsetX) + 'px';
+      ghost.style.top = (clientY - offsetY) + 'px';
+      clearHighlights();
+      ghost.style.display = 'none';
+      const el = document.elementFromPoint(clientX, clientY);
+      ghost.style.display = '';
+      const colBody = el ? el.closest('.column-body') : null;
+      if (colBody) colBody.classList.add('drag-over');
+    };
+
+    const endDrag = async (clientX, clientY) => {
+      const wasDragging = dragging;
+      dragging = false;
+      card.classList.remove('dragging');
+      clearHighlights();
+      if (ghost) { ghost.remove(); ghost = null; }
+
+      if (wasDragging) {
+        const el = document.elementFromPoint(clientX, clientY);
+        const colBody = el ? el.closest('.column-body') : null;
+        if (colBody) {
+          const targetColumnId = Number(colBody.dataset.columnId);
+          await moveTaskTo(Number(card.dataset.taskId), targetColumnId);
+        }
+      }
+    };
+
+    card.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      startX = e.clientX; startY = e.clientY; moved = false;
+      card.setPointerCapture(e.pointerId);
+      pressTimer = setTimeout(() => startDrag(e.clientX, e.clientY), 150);
     });
-    body.addEventListener('dragleave', () => body.classList.remove('drag-over'));
-    body.addEventListener('drop', async (e) => {
+
+    card.addEventListener('pointermove', (e) => {
+      if (!dragging) {
+        if (Math.abs(e.clientX - startX) > 8 || Math.abs(e.clientY - startY) > 8) {
+          clearTimeout(pressTimer);
+        }
+        return;
+      }
       e.preventDefault();
-      body.classList.remove('drag-over');
-      const taskId = Number(e.dataTransfer.getData('text/plain'));
-      const targetColumnId = Number(body.dataset.columnId);
-      await moveTaskTo(taskId, targetColumnId);
+      moveDrag(e.clientX, e.clientY);
+    });
+
+    card.addEventListener('pointerup', (e) => {
+      clearTimeout(pressTimer);
+      card.dataset.dragMoved = moved ? 'true' : 'false';
+      endDrag(e.clientX, e.clientY);
+    });
+
+    card.addEventListener('pointercancel', () => {
+      clearTimeout(pressTimer);
+      card.classList.remove('dragging');
+      clearHighlights();
+      if (ghost) { ghost.remove(); ghost = null; }
+      dragging = false;
     });
   });
 }
